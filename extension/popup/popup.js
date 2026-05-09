@@ -16,6 +16,7 @@ const fields = {
   teacherName: document.querySelector("#teacherName"),
   studentStatus: document.querySelector("#studentStatus"),
   message: document.querySelector("#message"),
+  closeButton: document.querySelector("#closeButton"),
   startButton: document.querySelector("#startButton"),
   pauseButton: document.querySelector("#pauseButton"),
   resumeButton: document.querySelector("#resumeButton"),
@@ -32,6 +33,7 @@ async function init() {
   fields.startButton.addEventListener("click", () => sendCommand("start"));
   fields.pauseButton.addEventListener("click", () => sendCommand("pause"));
   fields.resumeButton.addEventListener("click", () => sendCommand("resume"));
+  fields.closeButton.addEventListener("click", () => window.close());
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "local") return;

@@ -309,7 +309,7 @@ async function fillCompetitionForm(student, options = {}) {
   await selectByLabel(form, ["项目名称"], "智能算法编程", { signal });
   await selectByLabel(form, ["场景名称"], "智械未来", {
     signal,
-    filterText: "智械未来",
+    remoteSearchText: "智械未来",
   });
   await selectByLabel(form, ["队员组别"], student.groupName, { signal });
   await selectByLabel(form, ["学校所在地区"], provinceCandidates(student.province), {
@@ -408,7 +408,13 @@ async function fillInputByLabel(scope, labels, value, options = {}) {
 }
 
 async function selectByLabel(scope, labels, value, options = {}) {
-  const { signal, optional = false, selectIndex = 0, filterText = "" } = options;
+  const {
+    signal,
+    optional = false,
+    selectIndex = 0,
+    filterText = "",
+    remoteSearchText = "",
+  } = options;
   const values = Array.isArray(value) ? value.filter((item) => !isBlank(item)) : [value].filter((item) => !isBlank(item));
   if (!values.length) {
     if (optional) return null;
@@ -428,17 +434,23 @@ async function selectByLabel(scope, labels, value, options = {}) {
     throw new Error(`未找到选择框：${labels}`);
   }
 
-  if (filterText) {
-    setNativeValue(selectInput, filterText);
-    selectInput.dispatchEvent(new Event("input", { bubbles: true }));
-    await delayWithAbort(120, signal);
-  }
   selectInput.click();
   await delayWithAbort(120, signal);
 
+  const searchText = remoteSearchText || filterText;
+  if (searchText) {
+    setNativeValue(selectInput, "");
+    dispatchTextInputEvents(selectInput);
+    await delayWithAbort(80, signal);
+
+    setNativeValue(selectInput, searchText);
+    dispatchTextInputEvents(selectInput);
+    await delayWithAbort(remoteSearchText ? 500 : 120, signal);
+  }
+
   const option = await waitUntil(() => findVisibleSelectOption(values), {
     signal,
-    timeout: 10000,
+    timeout: remoteSearchText ? 20000 : 10000,
     errorMessage: `等待选择项渲染超时：${values.join(" / ")}`,
     returnValue: true,
   });
@@ -448,6 +460,13 @@ async function selectByLabel(scope, labels, value, options = {}) {
   selectInput.dispatchEvent(new Event("blur", { bubbles: true }));
   await delayWithAbort(120, signal);
   return option;
+}
+
+function dispatchTextInputEvents(input) {
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Process" }));
+  input.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "Process" }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 async function fillUniqueTeamName(form, student, options = {}) {

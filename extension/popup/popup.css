@@ -16,7 +16,27 @@ body {
 }
 
 .panel {
+  position: relative;
   padding: 16px;
+}
+
+.close-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  color: #647084;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.close-button:hover {
+  color: #18202a;
+  background: #e8eef6;
 }
 
 .header {
