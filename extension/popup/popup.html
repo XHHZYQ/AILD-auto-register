@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AILD Auto Register</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="panel">
+      <header class="header">
+        <img class="logo" src="../icons/icon.png" alt="">
+        <div>
+          <h1>自动报名</h1>
+          <p id="statusText">未开始</p>
+        </div>
+      </header>
+
+      <section class="settings" aria-label="执行设置">
+        <label>
+          <span>从 Excel 第几行开始</span>
+          <input id="startRow" type="number" min="2" step="1" value="2">
+        </label>
+        <label>
+          <span>完成几个学生后暂停</span>
+          <input id="pauseAfter" type="number" min="1" step="1" value="1">
+        </label>
+      </section>
+
+      <section class="student" aria-label="当前报名学生">
+        <div class="student-title">当前学生</div>
+        <dl>
+          <div>
+            <dt>姓名</dt>
+            <dd id="studentName">-</dd>
+          </div>
+          <div>
+            <dt>老师</dt>
+            <dd id="teacherName">-</dd>
+          </div>
+          <div>
+            <dt>状态</dt>
+            <dd id="studentStatus">等待执行</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="actions" aria-label="执行操作">
+        <button id="startButton" type="button">开始</button>
+        <button id="pauseButton" type="button" class="secondary">暂停</button>
+        <button id="resumeButton" type="button" class="secondary">继续执行</button>
+      </section>
+
+      <p id="message" class="message" role="status"></p>
+    </main>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

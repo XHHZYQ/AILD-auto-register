@@ -1,0 +1,15 @@
+{
+  "name": "aild-auto-register",
+  "version": "1.0.0",
+  "description": "Chrome MV3 自动报名插件。",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "xlsx": "^0.18.5"
+  }
+}

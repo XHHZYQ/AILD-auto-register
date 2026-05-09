@@ -1,0 +1,67 @@
+{
+  "manifest_version": 3,
+  "name": "AILD Auto Register",
+  "description": "读取本地报名 Excel，并在报名页面自动完成指导老师、参赛信息、队员信息和提交流程。",
+  "version": "0.1.0",
+  "action": {
+    "default_title": "AILD Auto Register",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon.png",
+      "32": "icons/icon.png",
+      "48": "icons/icon.png",
+      "128": "icons/icon.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon.png",
+    "32": "icons/icon.png",
+    "48": "icons/icon.png",
+    "128": "icons/icon.png"
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "vendor/xlsx.full.min.js",
+        "lib/excel-data.js",
+        "content/content-script.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/icon.png"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    },
+    {
+      "resources": [
+        "assets/报名信息/学生报名信息.xlsx",
+        "assets/报名信息/内部指导老师信息.xlsx",
+        "assets/报名信息/外部指导老师信息.xlsx"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}
