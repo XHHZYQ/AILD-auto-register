@@ -3,6 +3,7 @@ const defaultState = {
   startRow: 2,
   pauseAfter: 1,
   completedCount: 0,
+  currentExcelRow: null,
   currentStudent: null,
   message: "",
 };

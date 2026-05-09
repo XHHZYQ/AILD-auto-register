@@ -64,6 +64,40 @@
     });
   }
 
+  async function acceptCommitmentDialog(options = {}) {
+    const { signal, timeout = 15000 } = options;
+    const dialog = await waitUntil(() => findCommitmentDialog(), {
+      signal,
+      timeout,
+      errorMessage: "等待承诺书弹窗超时。",
+      returnValue: true,
+    });
+
+    const checkboxInput = dialog.querySelector('input[type="checkbox"]');
+    const checkbox = dialog.querySelector(".el-checkbox") || checkboxInput;
+    const checked = checkboxInput?.checked
+      || checkbox?.classList?.contains("is-checked")
+      || checkbox?.getAttribute("aria-checked") === "true";
+
+    if (!checked) {
+      (checkbox || checkboxInput)?.click();
+      await delay(120);
+    }
+
+    const confirmButton = [...dialog.querySelectorAll("button")]
+      .find((button) => normalizeText(button.textContent).includes("确认"))
+      || dialog.querySelector(".memOk")
+      || dialog.querySelector("button");
+    if (!confirmButton) throw new Error("承诺书弹窗中未找到确认按钮。");
+    confirmButton.click();
+
+    await waitUntil(() => !findCommitmentDialog(), {
+      signal,
+      timeout: 10000,
+      errorMessage: "等待承诺书弹窗关闭超时。",
+    });
+  }
+
   function findButtonByText(text) {
     const normalizedText = normalizeText(text);
     return [...document.querySelectorAll("button")]
@@ -84,6 +118,15 @@
       || dialog.querySelector(".el-button--primary")
       || dialog.querySelector("button");
     button?.click();
+  }
+
+  function findCommitmentDialog() {
+    return [...document.querySelectorAll(".el-dialog__wrapper, .el-dialog")]
+      .filter(isVisibleElement)
+      .find((dialog) => {
+        const text = normalizeText(dialog.textContent);
+        return text.includes("承诺书") || text.includes("我已阅读，继续报名");
+      }) || null;
   }
 
   async function waitUntil(predicate, options = {}) {
@@ -117,6 +160,7 @@
   }
 
   global.AILDRegisterActions = {
+    acceptCommitmentDialog,
     submitRegistrationPreview,
   };
 })(window);

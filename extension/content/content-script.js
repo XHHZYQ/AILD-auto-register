@@ -3,6 +3,7 @@ const runtimeState = {
   controller: null,
   registrationData: null,
   currentExcelRow: null,
+  completedCount: 0,
 };
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -43,28 +44,84 @@ async function startFlow(payload, isResume) {
   runtimeState.status = "running";
   runtimeState.controller = new AbortController();
   runtimeState.currentExcelRow = isResume && runtimeState.currentExcelRow ? runtimeState.currentExcelRow : payload.startRow;
+  runtimeState.completedCount = isResume ? runtimeState.completedCount : 0;
 
   await updateUiState({
     status: "running",
     startRow: payload.startRow,
     pauseAfter: payload.pauseAfter,
+    completedCount: runtimeState.completedCount,
+    currentExcelRow: runtimeState.currentExcelRow,
     message: isResume ? "继续执行，正在准备读取报名数据。" : "开始执行，正在准备读取报名数据。",
   });
 
   await waitForElement(".form-container", { text: "参赛信息", signal: runtimeState.controller.signal });
   const data = await loadRegistrationData();
-  const student = window.AILDExcelData.getStudentByExcelRow(data, runtimeState.currentExcelRow);
-
-  if (!student) {
-    await updateUiState({
-      status: "done",
-      currentStudent: null,
-      message: `Excel 第 ${runtimeState.currentExcelRow} 行没有可报名学生，执行结束。`,
-    });
-    runtimeState.status = "done";
-    return;
+  let completedThisRun = 0;
+  if (isResume) {
+    await acceptCommitmentForNextStudent({
+      signal: runtimeState.controller.signal,
+      timeout: 2000,
+    }).catch(() => {});
   }
 
+  while (runtimeState.status === "running") {
+    const student = window.AILDExcelData.getStudentByExcelRow(data, runtimeState.currentExcelRow);
+
+    if (!student) {
+      await updateUiState({
+        status: "done",
+        currentStudent: null,
+        completedCount: runtimeState.completedCount,
+        message: `Excel 第 ${runtimeState.currentExcelRow} 行没有可报名学生，执行结束。`,
+      });
+      runtimeState.status = "done";
+      return;
+    }
+
+    await processStudentRegistration(student, data);
+    runtimeState.completedCount += 1;
+    completedThisRun += 1;
+    runtimeState.currentExcelRow += 1;
+
+    await updateUiState({
+      completedCount: runtimeState.completedCount,
+      currentExcelRow: runtimeState.currentExcelRow,
+      currentStudent: {
+        name: student.name,
+        teacherName: student.teacherName || "-",
+        status: "报名完成",
+        excelRowNumber: student.excelRowNumber,
+      },
+    });
+
+    if (completedThisRun >= payload.pauseAfter) {
+      runtimeState.status = "paused";
+      await updateUiState({
+        status: "paused",
+        completedCount: runtimeState.completedCount,
+        currentExcelRow: runtimeState.currentExcelRow,
+        currentStudent: {
+          name: student.name,
+          teacherName: student.teacherName || "-",
+          status: `本次已完成 ${completedThisRun} 个学生，按设置自动暂停`,
+          excelRowNumber: student.excelRowNumber,
+        },
+        message: `本次已完成 ${completedThisRun} 个学生，累计完成 ${runtimeState.completedCount} 个。点击“继续执行”将从 Excel 第 ${runtimeState.currentExcelRow} 行继续。`,
+      });
+      return;
+    }
+
+    await updateUiState({
+      status: "running",
+      message: `已完成 ${student.name}，正在处理承诺书并准备第 ${runtimeState.currentExcelRow} 行。`,
+    });
+    await acceptCommitmentForNextStudent({ signal: runtimeState.controller.signal });
+    await waitForElement(".form-container", { text: "参赛信息", signal: runtimeState.controller.signal });
+  }
+}
+
+async function processStudentRegistration(student, data) {
   const teacher = window.AILDExcelData.findTeacher(data, student.teacherName);
   const quickTeacher = await findQuickTeacherButton(student.teacherName, {
     signal: runtimeState.controller.signal,
@@ -128,7 +185,7 @@ async function startFlow(payload, isResume) {
   await submitCurrentRegistration({ signal: runtimeState.controller.signal });
 
   await updateUiState({
-    status: "paused",
+    status: "running",
     currentStudent: {
       name: student.name,
       teacherName: student.teacherName || "-",
@@ -136,10 +193,15 @@ async function startFlow(payload, isResume) {
       excelRowNumber: student.excelRowNumber,
       teamName: competitionInfo.teamName,
     },
-    message: `${student.name} 报名成功并已返回主页面。团队名称：${competitionInfo.teamName}。下一步将处理承诺书弹窗并继续下一个学生。`,
+      message: `${student.name} 报名成功并已返回主页面。团队名称：${competitionInfo.teamName}。`,
   });
+}
 
-  runtimeState.status = "paused";
+async function acceptCommitmentForNextStudent(options = {}) {
+  if (!window.AILDRegisterActions?.acceptCommitmentDialog) {
+    throw new Error("承诺书处理模块未加载。");
+  }
+  await window.AILDRegisterActions.acceptCommitmentDialog(options);
 }
 
 async function submitCurrentRegistration(options = {}) {
