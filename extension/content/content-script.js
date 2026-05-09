@@ -90,17 +90,58 @@ async function startFlow(payload, isResume) {
   }
 
   await updateUiState({
+    status: "running",
+    currentStudent: {
+      name: student.name,
+      teacherName: student.teacherName || "-",
+      status: "正在填写参赛信息",
+      excelRowNumber: student.excelRowNumber,
+    },
+    message: `正在填写 ${student.name} 的参赛信息。`,
+  });
+  const competitionInfo = await fillCompetitionForm(student, {
+    signal: runtimeState.controller.signal,
+  });
+
+  await updateUiState({
     status: "paused",
     currentStudent: {
       name: student.name,
       teacherName: student.teacherName || "-",
-      status: buildTeacherDetectionStatus(teacher, quickTeacher.exists, teacherFormFilled),
+      status: `${buildTeacherDetectionStatus(teacher, quickTeacher.exists, teacherFormFilled)}；参赛信息已填写`,
       excelRowNumber: student.excelRowNumber,
+      teamName: competitionInfo.teamName,
     },
-    message: buildTeacherDetectionMessage(student, teacher, quickTeacher, teacherFormFilled),
+    message: `${buildTeacherDetectionMessage(student, teacher, quickTeacher, teacherFormFilled)} 团队名称：${competitionInfo.teamName}。下一步将添加队员。`,
   });
 
   runtimeState.status = "paused";
+}
+
+async function fillCompetitionForm(student, options = {}) {
+  const { signal } = options;
+  const form = await findSectionForm(["参赛信息"], {
+    signal,
+    timeout: 15000,
+  });
+
+  await selectByLabel(form, ["项目名称"], "智能算法编程", { signal });
+  await selectByLabel(form, ["场景名称"], "智械未来", {
+    signal,
+    filterText: "智械未来",
+  });
+  await selectByLabel(form, ["队员组别"], student.groupName, { signal });
+  await selectByLabel(form, ["学校所在地区"], provinceCandidates(student.province), {
+    signal,
+    selectIndex: 0,
+  });
+  await selectByLabel(form, ["学校所在地区"], cityCandidates(student.province, student.city), {
+    signal,
+    selectIndex: 1,
+  });
+
+  const teamName = await fillUniqueTeamName(form, student, { signal });
+  return { teamName };
 }
 
 async function fillTeacherForm(teacher, options = {}) {
@@ -113,7 +154,6 @@ async function fillTeacherForm(teacher, options = {}) {
   await fillInputByLabel(form, ["姓名中文", "中文姓名", "姓名"], teacher.name, { signal });
   await selectByLabel(form, ["性别"], teacher.gender, { signal });
   await fillInputByLabel(form, ["民族"], teacher.nation, { signal });
-  await selectByLabel(form, ["证件号码", "证件号"], "身份证号", { signal, optional: true });
   await fillInputByLabel(form, ["证件号码", "身份证号"], teacher.idNumber, {
     signal,
     inputSelector: 'input.am-form-field:not([style*="display: none"])',
@@ -177,8 +217,9 @@ async function fillInputByLabel(scope, labels, value, options = {}) {
 }
 
 async function selectByLabel(scope, labels, value, options = {}) {
-  const { signal, optional = false } = options;
-  if (isBlank(value)) {
+  const { signal, optional = false, selectIndex = 0, filterText = "" } = options;
+  const values = Array.isArray(value) ? value.filter((item) => !isBlank(item)) : [value].filter((item) => !isBlank(item));
+  if (!values.length) {
     if (optional) return null;
     throw new Error(`字段为空，无法选择：${labels}`);
   }
@@ -190,19 +231,24 @@ async function selectByLabel(scope, labels, value, options = {}) {
   }
 
   const selectInput = [...group.querySelectorAll(".el-select input.el-input__inner, input[readonly]")]
-    .find(isVisibleElement);
+    .filter(isVisibleElement)[selectIndex];
   if (!selectInput) {
     if (optional) return null;
     throw new Error(`未找到选择框：${labels}`);
   }
 
+  if (filterText) {
+    setNativeValue(selectInput, filterText);
+    selectInput.dispatchEvent(new Event("input", { bubbles: true }));
+    await delayWithAbort(120, signal);
+  }
   selectInput.click();
   await delayWithAbort(120, signal);
 
-  const option = await waitUntil(() => findVisibleSelectOption(value), {
+  const option = await waitUntil(() => findVisibleSelectOption(values), {
     signal,
     timeout: 10000,
-    errorMessage: `等待选择项渲染超时：${value}`,
+    errorMessage: `等待选择项渲染超时：${values.join(" / ")}`,
     returnValue: true,
   });
 
@@ -211,6 +257,64 @@ async function selectByLabel(scope, labels, value, options = {}) {
   selectInput.dispatchEvent(new Event("blur", { bubbles: true }));
   await delayWithAbort(120, signal);
   return option;
+}
+
+async function fillUniqueTeamName(form, student, options = {}) {
+  const { signal } = options;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const teamName = generateTeamName(student, attempt);
+    await fillInputByLabel(form, ["团队名称"], teamName, { signal });
+    const input = findFieldGroup(form, ["团队名称"])?.querySelector("input.am-form-field");
+    input?.dispatchEvent(new Event("blur", { bubbles: true }));
+    await delayWithAbort(500, signal);
+
+    const duplicateDialog = findMessageBoxByText("团队名称已存在，请重新输入");
+    if (!duplicateDialog) return teamName;
+
+    clickMessageBoxConfirm(duplicateDialog);
+    await waitUntil(() => !findMessageBoxByText("团队名称已存在，请重新输入"), {
+      signal,
+      timeout: 8000,
+      errorMessage: "等待团队名称重复提示关闭超时。",
+    });
+  }
+
+  throw new Error(`团队名称连续重复，无法为 ${student.name} 生成可用名称。`);
+}
+
+function generateTeamName(student, attempt = 0) {
+  const source = `${student.idNumber || ""}${student.name || ""}${student.excelRowNumber || ""}${attempt}`;
+  const chars = "智创星云启明远航新锐卓越未来灵动慧思";
+  let hash = 0;
+  for (const char of source) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+
+  let name = "";
+  for (let index = 0; index < 4; index += 1) {
+    name += chars[(hash + index * 7) % chars.length];
+  }
+  return name.replace(/[^\u4e00-\u9fa5]/g, "").slice(0, 5);
+}
+
+function provinceCandidates(province) {
+  const normalized = normalizeText(province);
+  const withoutSuffix = normalized.replace(/省$|市$|自治区$|壮族自治区$|回族自治区$|维吾尔自治区$/g, "");
+  return [...new Set([normalized, withoutSuffix].filter(Boolean))];
+}
+
+function cityCandidates(province, city) {
+  const normalizedProvince = normalizeText(province);
+  const normalizedCity = normalizeText(city);
+  const isDirectCity = ["北京市", "北京", "天津市", "天津", "上海市", "上海", "重庆市", "重庆"].includes(normalizedProvince);
+  const directCity = normalizedProvince.replace(/市$/, "");
+  return [...new Set([
+    normalizedCity,
+    normalizedCity.replace(/市$/, ""),
+    isDirectCity ? `${directCity}市` : "",
+    isDirectCity ? directCity : "",
+    isDirectCity ? "市辖区" : "",
+  ].filter(Boolean))];
 }
 
 async function uploadByLabel(scope, labels, imageInfo, options = {}) {
@@ -277,14 +381,29 @@ function nextElementMatching(element, selector) {
   return null;
 }
 
-function findVisibleSelectOption(value) {
-  const normalizedValue = normalizeText(value);
+function findVisibleSelectOption(values) {
+  const normalizedValues = (Array.isArray(values) ? values : [values]).map(normalizeText).filter(Boolean);
   return [...document.querySelectorAll(".el-select-dropdown__item")]
     .filter(isVisibleElement)
     .find((option) => {
       const text = normalizeText(option.textContent);
-      return text.includes(normalizedValue) || normalizedValue.includes(text);
+      return normalizedValues.some((value) => text.includes(value) || value.includes(text));
     }) || null;
+}
+
+function findMessageBoxByText(text) {
+  const normalizedText = normalizeText(text);
+  return [...document.querySelectorAll(".el-message-box__wrapper, .el-message-box")]
+    .filter(isVisibleElement)
+    .find((dialog) => normalizeText(dialog.textContent).includes(normalizedText)) || null;
+}
+
+function clickMessageBoxConfirm(dialog) {
+  const button = [...dialog.querySelectorAll("button")]
+    .find((candidate) => normalizeText(candidate.textContent).includes("确定"))
+    || dialog.querySelector(".el-button--primary")
+    || dialog.querySelector("button");
+  button?.click();
 }
 
 function setNativeValue(element, value) {

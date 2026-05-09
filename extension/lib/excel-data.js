@@ -15,7 +15,7 @@
     province: ["省"],
     city: ["市"],
     grade: ["年级"],
-    idNumber: ["身份证号码", "身份证号"],
+    idNumber: ["身份证号码", "身份证号", "证件号码"],
     guardianEmail: ["监护人邮箱", "邮箱"],
     guardianPhone: ["监护人手机", "手机"],
     studentPhoto: ["参赛选手1寸照片", "一寸照片", "照片"],
