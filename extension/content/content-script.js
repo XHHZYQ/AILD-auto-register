@@ -492,7 +492,21 @@ async function fillUniqueTeamName(form, student, options = {}) {
 
 function generateTeamName(student, attempt = 0) {
   const source = `${student.idNumber || ""}${student.name || ""}${student.excelRowNumber || ""}${attempt}`;
-  const chars = "智创星云启明远航新锐卓越未来灵动慧思";
+  const chars = 
+  // 智慧·思维
+  "智慧思维悟启迪析辩探钻研" +
+  // 创新·突破
+  "创新锐进取革拓越攀超卓绝" +
+  // 光明·方向
+  "明星辉耀曙晨曦灿烁炯炳朗" +
+  // 远航·征途
+  "航远征探索跋涉渡越闯踏行" +
+  // 云·自然意象
+  "云霞峰岳渊澜涌潮浪川岚霖" +
+  // 活力·精神
+  "龙凤麟翔腾跃奋勇毅韧志恒" +
+  // 未来·希望
+  "未来望梦憬程途域境界纪元";
   let hash = 0;
   for (const char of source) {
     hash = (hash * 31 + char.charCodeAt(0)) >>> 0;

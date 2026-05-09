@@ -117,42 +117,12 @@
   }
 
   function chooseSheetName(workbook, preferredAliases) {
-    const candidates = workbook.SheetNames.map((sheetName) => {
-      const matrix = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
-        header: 1,
-        defval: "",
-        raw: false,
-        blankrows: false,
-      });
-      const headers = matrix[0] || [];
-      const aliases = preferredAliases.flat();
-      const headerScore = aliases.filter((alias) => hasHeader(headers, alias)).length;
-      const contentScore = aliases.filter((alias) => hasContentForAlias(headers, matrix, alias)).length;
-      const adjustedNameBonus = normalizeTextForSheetName(sheetName).includes("调整后数据") ? 0.5 : 0;
-      const score = headerScore + contentScore + adjustedNameBonus;
-      return { sheetName, score, rowCount: Math.max(0, matrix.length - 1) };
-    });
+    const adjustedSheetName = workbook.SheetNames.find((sheetName) => (
+      normalizeTextForSheetName(sheetName) === "调整后数据"
+    ));
+    if (adjustedSheetName) return adjustedSheetName;
 
-    candidates.sort((left, right) => right.score - left.score || right.rowCount - left.rowCount);
-    return candidates[0]?.sheetName || workbook.SheetNames[0];
-  }
-
-  function hasHeader(headers, alias) {
-    const key = normalizeHeader(alias);
-    return headers.some((header) => {
-      const normalizedHeader = normalizeHeader(header);
-      return normalizedHeader.includes(key) || key.includes(normalizedHeader);
-    });
-  }
-
-  function hasContentForAlias(headers, matrix, alias) {
-    const key = normalizeHeader(alias);
-    const index = headers.findIndex((header) => {
-      const normalizedHeader = normalizeHeader(header);
-      return normalizedHeader.includes(key) || key.includes(normalizedHeader);
-    });
-    if (index < 0) return false;
-    return matrix.slice(1, 21).some((row) => cleanCell(row[index]));
+    throw new Error(`Excel 缺少“调整后数据”sheet，当前 sheets：${workbook.SheetNames.join("、")}`);
   }
 
   function getCellByAliases(headers, row, aliases) {
@@ -172,6 +142,7 @@
 
     return {
       excelRowNumber: row.excelRowNumber,
+      sheetName: row.sheetName,
       serialNumber: row.get(FIELD_ALIASES.serialNumber),
       name: row.get(FIELD_ALIASES.studentName),
       teacherName: row.get(FIELD_ALIASES.teacherName),
@@ -194,6 +165,7 @@
     return {
       source,
       excelRowNumber: row.excelRowNumber,
+      sheetName: row.sheetName,
       serialNumber: row.get(FIELD_ALIASES.serialNumber),
       name: row.get(FIELD_ALIASES.teacherName),
       gender: row.get(FIELD_ALIASES.gender),
