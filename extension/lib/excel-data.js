@@ -279,11 +279,12 @@
     return mimeTypes[extension] || "application/octet-stream";
   }
 
-  function normalizeCityForProvince(province, city) {
-    if (!province) return city;
-    return DIRECT_CITIES.has(province) ? province.replace(/市$/, "") + "市" : city;
-  }
-
+function normalizeCityForProvince(province, city) {
+  if (!province) return city;
+  // 直辖市时，city 字段统一返回不带"市"后缀的省名（与页面选项保持一致）
+  console.log('第一次格式化 市', DIRECT_CITIES.has(province) ? province.replace(/市$/, "") : city);
+  return DIRECT_CITIES.has(province) ? province.replace(/市$/, "") : city;
+}
 function getGradeNumber(grade) {
   const text = String(grade || "").trim().replace(/\s+/g, "");
 

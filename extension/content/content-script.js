@@ -502,7 +502,7 @@ function dispatchTextInputEvents(input) {
 
 async function fillUniqueTeamName(form, student, options = {}) {
   const { signal } = options;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  for (let attempt = 0; attempt < 15; attempt += 1) {
     const teamName = generateTeamName(student, attempt);
     await fillInputByLabel(form, ["团队名称"], teamName, { signal });
     const input = findFieldGroup(form, ["团队名称"])?.querySelector("input.am-form-field");
@@ -524,32 +524,41 @@ async function fillUniqueTeamName(form, student, options = {}) {
 }
 
 function generateTeamName(student, attempt = 0) {
-  const source = `${student.idNumber || ""}${student.name || ""}${student.excelRowNumber || ""}${attempt}`;
-  const chars = 
-  // 智慧·思维
-  "智慧思维悟启迪析辩探钻研" +
-  // 创新·突破
-  "创新锐进取革拓越攀超卓绝" +
-  // 光明·方向
-  "明星辉耀曙晨曦灿烁炯炳朗" +
-  // 远航·征途
-  "航远征探索跋涉渡越闯踏行" +
-  // 云·自然意象
-  "云霞峰岳渊澜涌潮浪川岚霖" +
-  // 活力·精神
-  "龙凤麟翔腾跃奋勇毅韧志恒" +
-  // 未来·希望
-  "未来望梦憬程途域境界纪元";
-  let hash = 0;
-  for (const char of source) {
-    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  const CHARS =
+    "智慧思维悟启迪析辩探钻研" +
+    "创新锐进取革拓越攀超卓绝" +
+    "明星辉耀曙晨曦灿烁炯炳朗" +
+    "航远征探索跋涉渡越闯踏行" +
+    "云霞峰岳渊澜涌潮浪川岚霖" +
+    "龙凤麟翔腾跃奋勇毅韧志恒" +
+    "未来望梦憬程途域境界纪元" +
+    "学思问行知合致良敏勤笃博" +
+    "青春少年壮志凌云奔赴山海";
+
+  // 用学生固定信息生成确定性基础 seed（保证同一学生首次生成稳定）
+  const stableSource = `${student.idNumber || ""}|${student.name || ""}|${student.excelRowNumber || ""}`;
+  let stableHash = 2166136261; // FNV-1a 32bit offset basis
+  for (const char of stableSource) {
+    stableHash ^= char.charCodeAt(0);
+    stableHash = (stableHash * 16777619) >>> 0;
   }
 
-  let name = "";
-  for (let index = 0; index < 4; index += 1) {
-    name += chars[(hash + index * 7) % chars.length];
-  }
-  return name.replace(/[^\u4e00-\u9fa5]/g, "").slice(0, 5);
+  // 引入真随机 + attempt，保证每次重试都不同
+  const randomBytes = new Uint32Array(2);
+  crypto.getRandomValues(randomBytes);
+  const entropy = (randomBytes[0] ^ (attempt * 2654435761)) >>> 0;
+  const entropy2 = (randomBytes[1] ^ stableHash) >>> 0;
+
+  // 用多个独立 seed 各自取一个字符，避免步长固定导致的碰撞
+  const seeds = [
+    (stableHash ^ entropy) >>> 0,
+    (entropy + 0x9e3779b9) >>> 0,
+    (entropy2 ^ (attempt * 0x517cc1b7)) >>> 0,
+    (stableHash + entropy2 + attempt) >>> 0,
+  ];
+
+  const name = seeds.map((seed) => CHARS[seed % CHARS.length]).join("");
+  return name.replace(/[^\u4e00-\u9fa5]/g, "").slice(0, 4);
 }
 
 function provinceCandidates(province) {
@@ -562,13 +571,18 @@ function cityCandidates(province, city) {
   const normalizedProvince = normalizeText(province);
   const normalizedCity = normalizeText(city);
   const isDirectCity = ["北京市", "北京", "天津市", "天津", "上海市", "上海", "重庆市", "重庆"].includes(normalizedProvince);
-  const directCity = normalizedProvince.replace(/市$/, "");
+
+  if (isDirectCity) {
+    // 直辖市：页面"市"下拉选项是不带"市"字的名称（如"北京"），优先匹配
+    const directCityName = normalizedProvince.replace(/市$/, "");
+    console.log('第二次格式化 市', isDirectCity, directCityName);
+    return [directCityName];
+  }
+
+  // 普通省份：优先不带"市"后缀，再兜底带"市"
   return [...new Set([
-    isDirectCity ? directCity : "",
     normalizedCity.replace(/市$/, ""),
     normalizedCity,
-    isDirectCity ? `${directCity}市` : "",
-    isDirectCity ? "市辖区" : "",
   ].filter(Boolean))];
 }
 
