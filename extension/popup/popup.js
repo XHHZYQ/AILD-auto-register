@@ -58,7 +58,6 @@ async function sendCommand(command) {
     command,
     payload: { startRow, pauseAfter },
   });
-  window.close();
 }
 
 function normalizePositiveInteger(value, fallback) {

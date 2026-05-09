@@ -359,7 +359,7 @@ async function findSectionForm(titleTexts, options = {}) {
 
   return waitUntil(() => {
     const title = [...document.querySelectorAll(".form-container .titleB, .form-container h3")]
-      .find((node) => titles.some((text) => normalizeText(node.textContent).includes(normalizeText(text))));
+      .find((node) => isSectionTitleMatch(node, titles));
     const section = title ? nextElementMatching(title, ".form-item") : null;
     return section?.querySelector("form") || null;
   }, {
@@ -367,6 +367,16 @@ async function findSectionForm(titleTexts, options = {}) {
     signal,
     errorMessage: `等待表单渲染超时：${titles.join(" / ")}`,
     returnValue: true,
+  });
+}
+
+function isSectionTitleMatch(node, titles) {
+  const nodeText = normalizeText(node.textContent).replace(/[：:]/g, "");
+  if (!nodeText || nodeText.includes("快速注册")) return false;
+
+  return titles.some((title) => {
+    const expected = normalizeText(title).replace(/[：:]/g, "");
+    return nodeText === expected || nodeText.startsWith(expected);
   });
 }
 
@@ -380,7 +390,7 @@ async function fillInputByLabel(scope, labels, value, options = {}) {
   const group = findFieldGroup(scope, labels);
   if (!group) {
     if (optional) return null;
-    throw new Error(`未找到输入字段：${labels}`);
+    throw new Error(`未找到输入字段：${labels}。当前表单字段：${listFieldHints(scope)}`);
   }
 
   const input = [...group.querySelectorAll(inputSelector)].find(isVisibleElement);
@@ -408,7 +418,7 @@ async function selectByLabel(scope, labels, value, options = {}) {
   const group = findFieldGroup(scope, labels);
   if (!group) {
     if (optional) return null;
-    throw new Error(`未找到选择字段：${labels}`);
+    throw new Error(`未找到选择字段：${labels}。当前表单字段：${listFieldHints(scope)}`);
   }
 
   const selectInput = [...group.querySelectorAll(".el-select input.el-input__inner, input[readonly]")]
@@ -508,7 +518,7 @@ async function uploadByLabel(scope, labels, imageInfo, options = {}) {
   const group = findFieldGroup(scope, labels);
   if (!group) {
     if (optional) return null;
-    throw new Error(`未找到上传字段：${labels}`);
+    throw new Error(`未找到上传字段：${labels}。当前表单字段：${listFieldHints(scope)}`);
   }
 
   const input = group.querySelector('input[type="file"]');
@@ -547,10 +557,26 @@ function findFieldGroup(scope, labels) {
   const normalizedLabels = (Array.isArray(labels) ? labels : [labels]).map(normalizeText);
   return [...scope.querySelectorAll(".am-input-group")]
     .find((group) => {
-      const label = group.querySelector(".am-input-group-label, label, .xing")?.parentElement || group;
-      const text = normalizeText(label.textContent);
-      return normalizedLabels.some((candidate) => text.includes(candidate));
+      const fieldText = getFieldHintText(group);
+      return normalizedLabels.some((candidate) => fieldText.includes(candidate));
     }) || null;
+}
+
+function getFieldHintText(group) {
+  const label = group.querySelector(".am-input-group-label, label, .disTtl");
+  const placeholders = [...group.querySelectorAll("input, textarea")]
+    .map((input) => input.getAttribute("placeholder") || "")
+    .join("");
+  const visibleText = group.textContent || "";
+  return normalizeText(`${label?.textContent || ""}${placeholders}${visibleText}`);
+}
+
+function listFieldHints(scope) {
+  return [...scope.querySelectorAll(".am-input-group")]
+    .map(getFieldHintText)
+    .filter(Boolean)
+    .slice(0, 12)
+    .join(" | ") || "无";
 }
 
 function nextElementMatching(element, selector) {
