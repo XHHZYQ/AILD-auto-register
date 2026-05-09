@@ -56,9 +56,9 @@
     },
     {
       "resources": [
-        "assets/报名信息/学生报名信息.xlsx",
-        "assets/报名信息/内部指导老师信息.xlsx",
-        "assets/报名信息/外部指导老师信息.xlsx"
+        "assets/registration/students.xlsx",
+        "assets/registration/internal-teachers.xlsx",
+        "assets/registration/external-teachers.xlsx"
       ],
       "matches": [
         "<all_urls>"

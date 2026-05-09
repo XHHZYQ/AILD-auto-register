@@ -1,8 +1,8 @@
 (function exposeExcelData(global) {
   const FILES = {
-    students: "assets/报名信息/学生报名信息.xlsx",
-    internalTeachers: "assets/报名信息/内部指导老师信息.xlsx",
-    externalTeachers: "assets/报名信息/外部指导老师信息.xlsx",
+    students: "assets/registration/students.xlsx",
+    internalTeachers: "assets/registration/internal-teachers.xlsx",
+    externalTeachers: "assets/registration/external-teachers.xlsx",
   };
 
   const FIELD_ALIASES = {
