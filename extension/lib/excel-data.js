@@ -284,29 +284,34 @@
     return DIRECT_CITIES.has(province) ? province.replace(/市$/, "") + "市" : city;
   }
 
-  function getGradeNumber(grade) {
-    const text = String(grade || "").trim();
-    const digit = text.match(/\d+/);
-    if (digit) return Number.parseInt(digit[0], 10);
+function getGradeNumber(grade) {
+  const text = String(grade || "").trim().replace(/\s+/g, "");
 
-    const chineseDigits = {
-      一: 1,
-      二: 2,
-      三: 3,
-      四: 4,
-      五: 5,
-      六: 6,
-      七: 7,
-      八: 8,
-      九: 9,
-      十: 10,
-    };
+  // 1. 优先匹配初高中年级（必须在纯数字和中文数字之前判断）
+  const middleHighMap = [
+    { keywords: ["高一", "高中一", "高中1"], number: 10 },
+    { keywords: ["高二", "高中二", "高中2"], number: 11 },
+    { keywords: ["高三", "高中三", "高中3"], number: 12 },
+    { keywords: ["初一", "初中一", "初中1"], number: 7 },
+    { keywords: ["初二", "初中二", "初中2"], number: 8 },
+    { keywords: ["初三", "初中三", "初中3"], number: 9 },
+  ];
+  const matched = middleHighMap.find(({ keywords }) =>
+    keywords.some((kw) => text.includes(kw))
+  );
+  if (matched) return matched.number;
 
-    if (text.includes("十一")) return 11;
-    if (text.includes("十二")) return 12;
-    const match = text.match(/[一二三四五六七八九十]/);
-    return match ? chineseDigits[match[0]] : null;
-  }
+  // 2. 纯阿拉伯数字
+  const digit = text.match(/\d+/);
+  if (digit) return Number.parseInt(digit[0], 10);
+
+  // 3. 中文数字（小学场景，此时已排除初高中干扰）
+  const chineseDigits = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+  if (text.includes("十一")) return 11;
+  if (text.includes("十二")) return 12;
+  const match = text.match(/[一二三四五六七八九十]/);
+  return match ? chineseDigits[match[0]] : null;
+}
 
   function getGroupNameByGrade(grade) {
     const number = getGradeNumber(grade);

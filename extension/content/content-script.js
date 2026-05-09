@@ -289,12 +289,45 @@ function findButtonByText(text) {
 }
 
 function gradeCandidates(student) {
-  const number = student.gradeNumber;
-  return [...new Set([
-    Number.isFinite(number) ? `${number}年级` : "",
-    student.grade,
-    normalizeText(student.grade).replace(/[一二三四五六七八九十]+/, number || ""),
-  ].filter(Boolean))];
+  const gradeText = student.grade;
+  const normalizedGrade = normalizeText(gradeText);
+  const candidates = [];
+
+  // 添加原始年级文本作为兜底
+  if (gradeText) {
+    candidates.push(gradeText);
+  }
+
+  if (normalizedGrade) {
+    // 初高中年级映射表：中文年级关键词 -> 页面数字年级 + 别名
+    const gradeMap = [
+      { keywords: ['高一', '高中一', '高中1', '10年级'], page: '10年级', aliases: ['高一', '高中一年级'] },
+      { keywords: ['高二', '高中二', '高中2', '11年级'], page: '11年级', aliases: ['高二', '高中二年级'] },
+      { keywords: ['高三', '高中三', '高中3', '12年级'], page: '12年级', aliases: ['高三', '高中三年级'] },
+      { keywords: ['初一', '初中一', '初中1', '7年级'],  page: '7年级',  aliases: ['初一', '初中一年级'] },
+      { keywords: ['初二', '初中二', '初中2', '8年级'],  page: '8年级',  aliases: ['初二', '初中二年级'] },
+      { keywords: ['初三', '初中三', '初中3', '9年级'],  page: '9年级',  aliases: ['初三', '初中三年级'] },
+      { keywords: ['六年级', '小学六', '6年级'],         page: '6年级',  aliases: ['六年级'] },
+      { keywords: ['五年级', '小学五', '5年级'],         page: '5年级',  aliases: ['五年级'] },
+      { keywords: ['四年级', '小学四', '4年级'],         page: '4年级',  aliases: ['四年级'] },
+      { keywords: ['三年级', '小学三', '3年级'],         page: '3年级',  aliases: ['三年级'] },
+      { keywords: ['二年级', '小学二', '2年级'],         page: '2年级',  aliases: ['二年级'] },
+      { keywords: ['一年级', '小学一', '1年级'],         page: '1年级',  aliases: ['一年级'] },
+    ];
+
+    // 按顺序匹配（初高中优先于小学，避免"高一年级"误匹配"一年级"）
+    const matched = gradeMap.find(({ keywords }) =>
+      keywords.some((kw) => normalizedGrade.includes(kw))
+    );
+
+    if (matched) {
+      candidates.push(matched.page, ...matched.aliases);
+    }
+  }
+
+  const result = [...new Set(candidates.filter(Boolean))];
+  console.log('年级处理结果', result);
+  return result;
 }
 
 async function fillCompetitionForm(student, options = {}) {
