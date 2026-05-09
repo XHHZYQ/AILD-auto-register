@@ -62,6 +62,8 @@
       timeout: 20000,
       errorMessage: "等待返回报名主页面超时。",
     });
+
+    await acceptCommitmentDialog({ signal });
   }
 
   async function acceptCommitmentDialog(options = {}) {

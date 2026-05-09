@@ -114,10 +114,8 @@ async function startFlow(payload, isResume) {
 
     await updateUiState({
       status: "running",
-      message: `已完成 ${student.name}，正在处理承诺书并准备第 ${runtimeState.currentExcelRow} 行。`,
+      message: `已完成 ${student.name}，准备第 ${runtimeState.currentExcelRow} 行。`,
     });
-    await acceptCommitmentForNextStudent({ signal: runtimeState.controller.signal });
-    await waitForElement(".form-container", { text: "参赛信息", signal: runtimeState.controller.signal });
   }
 }
 
