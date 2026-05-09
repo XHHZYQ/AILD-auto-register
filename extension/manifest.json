@@ -31,6 +31,7 @@
       "js": [
         "vendor/xlsx.full.min.js",
         "lib/excel-data.js",
+        "lib/register-actions.js",
         "content/content-script.js"
       ],
       "run_at": "document_idle"

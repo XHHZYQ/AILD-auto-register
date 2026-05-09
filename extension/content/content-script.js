@@ -102,20 +102,139 @@ async function startFlow(payload, isResume) {
   const competitionInfo = await fillCompetitionForm(student, {
     signal: runtimeState.controller.signal,
   });
+  await updateUiState({
+    status: "running",
+    currentStudent: {
+      name: student.name,
+      teacherName: student.teacherName || "-",
+      status: "正在添加队员",
+      excelRowNumber: student.excelRowNumber,
+      teamName: competitionInfo.teamName,
+    },
+    message: `正在添加队员：${student.name}。`,
+  });
+  await addStudentMember(student, { signal: runtimeState.controller.signal });
+  await updateUiState({
+    status: "running",
+    currentStudent: {
+      name: student.name,
+      teacherName: student.teacherName || "-",
+      status: "正在预览确认并提交报名",
+      excelRowNumber: student.excelRowNumber,
+      teamName: competitionInfo.teamName,
+    },
+    message: `正在提交 ${student.name} 的报名信息。`,
+  });
+  await submitCurrentRegistration({ signal: runtimeState.controller.signal });
 
   await updateUiState({
     status: "paused",
     currentStudent: {
       name: student.name,
       teacherName: student.teacherName || "-",
-      status: `${buildTeacherDetectionStatus(teacher, quickTeacher.exists, teacherFormFilled)}；参赛信息已填写`,
+      status: `${buildTeacherDetectionStatus(teacher, quickTeacher.exists, teacherFormFilled)}；报名已提交`,
       excelRowNumber: student.excelRowNumber,
       teamName: competitionInfo.teamName,
     },
-    message: `${buildTeacherDetectionMessage(student, teacher, quickTeacher, teacherFormFilled)} 团队名称：${competitionInfo.teamName}。下一步将添加队员。`,
+    message: `${student.name} 报名成功并已返回主页面。团队名称：${competitionInfo.teamName}。下一步将处理承诺书弹窗并继续下一个学生。`,
   });
 
   runtimeState.status = "paused";
+}
+
+async function submitCurrentRegistration(options = {}) {
+  if (!window.AILDRegisterActions?.submitRegistrationPreview) {
+    throw new Error("预览提交模块未加载。");
+  }
+  await window.AILDRegisterActions.submitRegistrationPreview(options);
+}
+
+async function addStudentMember(student, options = {}) {
+  const { signal } = options;
+  const addButton = await waitUntil(() => findButtonByText("添加队员"), {
+    signal,
+    timeout: 15000,
+    errorMessage: "未找到添加队员按钮。",
+    returnValue: true,
+  });
+  addButton.click();
+
+  const modal = await waitUntil(() => findMemberModal(), {
+    signal,
+    timeout: 15000,
+    errorMessage: "等待添加队员弹窗超时。",
+    returnValue: true,
+  });
+  const form = modal.querySelector("form");
+  if (!form) throw new Error("添加队员弹窗中未找到表单。");
+
+  await fillInputByLabel(form, ["姓名中文", "中文姓名", "姓名"], student.name, { signal });
+  await selectByLabel(form, ["性别"], student.gender, { signal });
+  await fillInputByLabel(form, ["民族"], student.nation, { signal });
+  await fillInputByLabel(form, ["学校全称", "学校"], student.school, { signal });
+  await selectByLabel(form, ["年级"], gradeCandidates(student), { signal });
+  await fillStudentIdNumber(form, student.idNumber, { signal });
+  await fillInputByLabel(form, ["监护人邮箱", "邮箱"], student.guardianEmail, { signal });
+  await fillInputByLabel(form, ["监护人手机", "手机"], student.guardianPhone, { signal });
+  await uploadByLabel(form, ["一寸照片", "照片"], student.studentPhoto, { signal });
+
+  const submitButton = modal.querySelector(".memOk") || [...modal.querySelectorAll("button")].find((button) => normalizeText(button.textContent).includes("提交"));
+  if (!submitButton) throw new Error("添加队员弹窗中未找到提交按钮。");
+  submitButton.click();
+
+  await waitUntil(() => !findMemberModal(), {
+    signal,
+    timeout: 20000,
+    errorMessage: "等待添加队员弹窗关闭超时。",
+  });
+}
+
+async function fillStudentIdNumber(form, idNumber, options = {}) {
+  const { signal } = options;
+  if (isBlank(idNumber)) throw new Error("学生身份证号为空。");
+
+  const groups = [...form.querySelectorAll(".am-input-group")].filter((group) => {
+    const text = normalizeText(group.textContent);
+    return text.includes("证件号码") || text.includes("身份证号");
+  });
+  const group = groups.find((candidate) => candidate.querySelector('input.am-form-field:not([style*="display: none"])'))
+    || groups[0];
+  if (!group) throw new Error("未找到学生身份证号输入框。");
+
+  const input = [...group.querySelectorAll('input.am-form-field:not([style*="display: none"])')]
+    .find(isVisibleElement) || [...group.querySelectorAll("input.am-form-field")].find(isVisibleElement);
+  if (!input) throw new Error("未找到可见学生身份证号输入框。");
+
+  setNativeValue(input, idNumber);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  input.dispatchEvent(new Event("blur", { bubbles: true }));
+  await delayWithAbort(80, signal);
+}
+
+function findMemberModal() {
+  return [...document.querySelectorAll(".am-modal.am-modal-active, .am-modal")]
+    .filter(isVisibleElement)
+    .find((modal) => {
+      const text = normalizeText(modal.textContent);
+      return text.includes("请输入队员信息") || (text.includes("姓名中文") && text.includes("监护人邮箱") && text.includes("提交"));
+    }) || null;
+}
+
+function findButtonByText(text) {
+  const normalizedText = normalizeText(text);
+  return [...document.querySelectorAll("button")]
+    .filter(isVisibleElement)
+    .find((button) => normalizeText(button.textContent).includes(normalizedText)) || null;
+}
+
+function gradeCandidates(student) {
+  const number = student.gradeNumber;
+  return [...new Set([
+    Number.isFinite(number) ? `${number}年级` : "",
+    student.grade,
+    normalizeText(student.grade).replace(/[一二三四五六七八九十]+/, number || ""),
+  ].filter(Boolean))];
 }
 
 async function fillCompetitionForm(student, options = {}) {
@@ -309,10 +428,10 @@ function cityCandidates(province, city) {
   const isDirectCity = ["北京市", "北京", "天津市", "天津", "上海市", "上海", "重庆市", "重庆"].includes(normalizedProvince);
   const directCity = normalizedProvince.replace(/市$/, "");
   return [...new Set([
-    normalizedCity,
-    normalizedCity.replace(/市$/, ""),
-    isDirectCity ? `${directCity}市` : "",
     isDirectCity ? directCity : "",
+    normalizedCity.replace(/市$/, ""),
+    normalizedCity,
+    isDirectCity ? `${directCity}市` : "",
     isDirectCity ? "市辖区" : "",
   ].filter(Boolean))];
 }
