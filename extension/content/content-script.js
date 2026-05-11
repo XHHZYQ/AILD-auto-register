@@ -236,6 +236,10 @@ async function addStudentMember(student, options = {}) {
   await fillStudentIdNumber(form, student.idNumber, { signal });
   await fillInputByLabel(form, ["监护人邮箱", "邮箱"], student.guardianEmail, { signal });
   await fillInputByLabel(form, ["监护人手机", "手机"], student.guardianPhone, { signal });
+  if (!student.studentPhoto?.hasImageFile) {
+    await pauseForMissingPhoto("一寸照片", student.name, student.excelRowNumber, signal);
+    return;
+  }
   await uploadByLabel(form, ["一寸照片", "照片"], student.studentPhoto, { signal });
 
   const submitButton = modal.querySelector(".memOk") || [...modal.querySelectorAll("button")].find((button) => normalizeText(button.textContent).includes("提交"));
@@ -326,7 +330,6 @@ function gradeCandidates(student) {
   }
 
   const result = [...new Set(candidates.filter(Boolean))];
-  console.log('年级处理结果', result);
   return result;
 }
 
@@ -378,10 +381,11 @@ async function fillTeacherForm(teacher, options = {}) {
   await fillInputByLabel(form, ["邮箱"], teacher.email, { signal });
   await fillInputByLabel(form, ["学校全称", "学校", "单位"], teacher.workplace, { signal, optional: true });
 
-  await uploadByLabel(form, ["一寸照片", "照片"], teacher.photo, {
-    signal,
-    optional: !teacher.photo?.hasImageFile,
-  });
+  if (!teacher.photo?.hasImageFile) {
+    await pauseForMissingPhoto("一寸照片（老师）", teacher.name, teacher.excelRowNumber, signal);
+    return;
+  }
+  await uploadByLabel(form, ["一寸照片", "照片"], teacher.photo, { signal });
   await uploadByLabel(form, ["资格证书"], teacher.certificate, {
     signal,
     optional: true,
@@ -585,7 +589,6 @@ function cityCandidates(province, city) {
   if (isDirectCity) {
     // 直辖市：页面"市"下拉选项是不带"市"字的名称（如"北京"），优先匹配
     const directCityName = normalizedProvince.replace(/市$/, "");
-    console.log('第二次格式化 市', isDirectCity, directCityName);
     return [directCityName];
   }
 
@@ -594,6 +597,39 @@ function cityCandidates(province, city) {
     normalizedCity.replace(/市$/, ""),
     normalizedCity,
   ].filter(Boolean))];
+}
+
+async function pauseForMissingPhoto(label, personName, excelRowNumber, signal) {
+  const message = `第 ${excelRowNumber} 行「${personName}」的【${label}】在 Excel 中没有找到照片，请手动补充后点击"继续执行"。`;
+
+  runtimeState.status = "paused";
+  runtimeState.controller?.abort();
+
+  await updateUiState({
+    status: "paused",
+    message,
+    currentStudent: {
+      name: personName,
+      status: `缺少照片：${label}`,
+      excelRowNumber,
+    },
+  });
+
+  // 弹窗提示用户
+  await new Promise((resolve) => setTimeout(() => {
+    window.alert(message);
+    resolve();
+  }, 100));
+
+  // 轮询等待用户点击"继续执行"（resume 命令会将 status 改回 running）
+  // await new Promise((resolve, reject) => {
+  //   const interval = setInterval(() => {
+  //     if (runtimeState.status === "running") {
+  //       clearInterval(interval);
+  //       resolve();
+  //     }
+  //   }, 300);
+  // });
 }
 
 async function uploadByLabel(scope, labels, imageInfo, options = {}) {
@@ -734,7 +770,6 @@ function findCorrectCitySelectOption(selectInput, values) {
   }
   
   // 兜底：使用原来的方法
-  console.log('兜底方法查找城市选项');
   return findVisibleSelectOption(values);
 }
 

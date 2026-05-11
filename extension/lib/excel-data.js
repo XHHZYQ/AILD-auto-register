@@ -228,22 +228,32 @@
 
     const imageMap = new Map();
     for (const match of cellImagesXml.matchAll(/<xdr:cNvPr\b[^>]*\bname="([^"]+)"[\s\S]*?<a:blip\b[^>]*\br:embed="([^"]+)"/g)) {
-      const [, imageId, relationshipId] = match;
-      const target = relationshipTargets.get(relationshipId);
-      if (!target) continue;
+      const picBlocks = cellImagesXml.match(/<xdr:pic\b[\s\S]*?<\/xdr:pic>/g) || [];
+      for (const block of picBlocks) {
+        const nameMatch = block.match(/<xdr:cNvPr\b[^>]*\bname="([^"]+)"/);
+        const embedMatch = block.match(/<a:blip\b[^>]*\br:embed="([^"]+)"/);
+        if (!nameMatch || !embedMatch) continue;          // 节点不完整就跳过，不串位
 
-      const normalizedTarget = target.startsWith("../") ? target.replace(/^\.\.\//, "xl/") : `xl/${target}`;
-      const file = files[normalizedTarget];
-      const bytes = getWorkbookFileBytes(file);
-      if (!bytes) continue;
+        const [, imageId] = nameMatch;
+        const [, relationshipId] = embedMatch;
+        const target = relationshipTargets.get(relationshipId);
+        if (!target) continue;
 
-      const fileName = normalizedTarget.split("/").pop() || `${imageId}.png`;
-      imageMap.set(imageId, {
-        imageId,
-        fileName,
-        mimeType: getMimeType(fileName),
-        bytes,
-      });
+        const normalizedTarget = target.startsWith("../")
+          ? target.replace(/^\.\.\//, "xl/")
+          : `xl/${target}`;
+        const file = files[normalizedTarget];
+        const bytes = getWorkbookFileBytes(file);
+        if (!bytes) continue;
+
+        const fileName = normalizedTarget.split("/").pop() || `${imageId}.png`;
+        imageMap.set(imageId, {
+          imageId,
+          fileName,
+          mimeType: getMimeType(fileName),
+          bytes,
+        });
+      }
     }
 
     return imageMap;
