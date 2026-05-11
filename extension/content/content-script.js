@@ -347,6 +347,10 @@ async function fillCompetitionForm(student, options = {}) {
     signal,
     selectIndex: 0,
   });
+  
+  // 等待省份下拉框完全隐藏，避免与城市选择冲突
+  await delayWithAbort(200, signal);
+  
   await selectByLabel(form, ["学校所在地区"], cityCandidates(student.province, student.city), {
     signal,
     selectIndex: 1,
@@ -479,7 +483,13 @@ async function selectByLabel(scope, labels, value, options = {}) {
     await delayWithAbort(remoteSearchText ? 500 : 120, signal);
   }
 
-  const option = await waitUntil(() => findVisibleSelectOption(values), {
+  const option = await waitUntil(() => {
+    if (labels[0] === '学校所在地区' && selectIndex === 1) {
+      // 学校所在地区的城市选择：需要确保找到正确的下拉框选项
+      return findCorrectCitySelectOption(selectInput, values);
+    }
+    return findVisibleSelectOption(values);
+  }, {
     signal,
     timeout: remoteSearchText ? 20000 : 10000,
     errorMessage: `等待选择项渲染超时：${values.join(" / ")}`,
@@ -674,6 +684,58 @@ function findVisibleSelectOption(values) {
       const text = normalizeText(option.textContent);
       return normalizedValues.some((value) => text.includes(value) || value.includes(text));
     }) || null;
+}
+
+function findCorrectCitySelectOption(selectInput, values) {
+  const normalizedValues = (Array.isArray(values) ? values : [values]).map(normalizeText).filter(Boolean);
+  
+  // 首先尝试找到与当前输入框关联的下拉框
+  let dropdown = null;
+  
+  // 方法1：通过 el-select 的 popper 属性查找关联的下拉框
+  const selectEl = selectInput.closest('.el-select');
+  if (selectEl) {
+    const popperRef = selectEl._popper || selectEl.__vue__?._popper;
+    if (popperRef && popperRef.popper) {
+      dropdown = popperRef.popper.querySelector('.el-select-dropdown');
+    }
+  }
+  
+  // 方法2：如果方法1失败，通过位置关系查找最近的可见下拉框
+  if (!dropdown) {
+    const allDropdowns = [...document.querySelectorAll('.el-select-dropdown')].filter(isVisibleElement);
+    if (allDropdowns.length > 0) {
+      // 找到距离当前输入框最近的下拉框
+      const inputRect = selectInput.getBoundingClientRect();
+      dropdown = allDropdowns.reduce((nearest, current) => {
+        const currentRect = current.getBoundingClientRect();
+        const nearestRect = nearest.getBoundingClientRect();
+        
+        const currentDistance = Math.abs(currentRect.top - inputRect.top) + Math.abs(currentRect.left - inputRect.left);
+        const nearestDistance = Math.abs(nearestRect.top - inputRect.top) + Math.abs(nearestRect.left - inputRect.left);
+        
+        return currentDistance < nearestDistance ? current : nearest;
+      });
+    }
+  }
+  
+  // 如果找到了下拉框，在其中查找选项
+  if (dropdown) {
+    const options = [...dropdown.querySelectorAll('.el-select-dropdown__item')].filter(isVisibleElement);
+    const option = options.find((opt) => {
+      const text = normalizeText(opt.textContent);
+      return normalizedValues.some((value) => text.includes(value) || value.includes(text));
+    });
+    
+    if (option) {
+      console.log('找到正确的城市选项:', option, '来自下拉框:', dropdown);
+      return option;
+    }
+  }
+  
+  // 兜底：使用原来的方法
+  console.log('兜底方法查找城市选项');
+  return findVisibleSelectOption(values);
 }
 
 function findMessageBoxByText(text) {
