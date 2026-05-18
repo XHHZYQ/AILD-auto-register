@@ -56,9 +56,8 @@
     },
     {
       "resources": [
-        "assets/registration/students.xlsx",
-        "assets/registration/internal-teachers.xlsx",
-        "assets/registration/external-teachers.xlsx"
+        "assets/excel/*",
+        "assets/photos/*"
       ],
       "matches": [
         "<all_urls>"

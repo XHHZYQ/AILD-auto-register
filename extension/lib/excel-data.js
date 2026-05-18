@@ -1,8 +1,8 @@
 (function exposeExcelData(global) {
   const FILES = {
-    students: "assets/registration/students.xlsx",
-    internalTeachers: "assets/registration/internal-teachers.xlsx",
-    externalTeachers: "assets/registration/external-teachers.xlsx",
+    students: "assets/excel/students.xlsx",
+    internalTeachers: "assets/excel/internal-teachers.xlsx",
+    externalTeachers: "assets/excel/external-teachers.xlsx",
   };
 
   const FIELD_ALIASES = {
@@ -359,6 +359,33 @@
         hasImageReference: true,  // 有引用，等待异步填充
         hasImageFile: false,       // 异步填充前标记为 false
         fileName: "",
+        mimeType: "",
+        bytes: null,
+      };
+    }
+
+    // —— 本地相对路径模式 ——
+    // 检查是否包含常见图片格式且不包含 DISPIMG，并且不是 HTTP 链接
+    if (/\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(text) && !text.includes("DISPIMG")) {
+      const normalizedPath = text.replace(/\\/g, "/");
+      let assetUrl = normalizedPath;
+      if (assetUrl.startsWith("photos/")) {
+        assetUrl = "assets/" + assetUrl;
+      } else if (!assetUrl.startsWith("assets/")) {
+        // 如果没有 photos/ 前缀，直接拼入 assets/photos/
+        assetUrl = "assets/photos/" + assetUrl;
+      }
+      console.log('assetUrl', assetUrl);
+      
+      const fileUrl = chrome.runtime.getURL(assetUrl);
+      return {
+        value: text,
+        imageId: "",
+        isUrl: true,          // 将它标记为 url 类型，方便复用 resolveUrlImages 逻辑
+        url: fileUrl,         // 直接使用 chrome-extension:// 链接 fetch
+        hasImageReference: true,
+        hasImageFile: false,
+        fileName: assetUrl.split("/").pop() || "",
         mimeType: "",
         bytes: null,
       };
