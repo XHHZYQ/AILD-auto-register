@@ -42,6 +42,8 @@
     const internalTeacherImages = extractWorkbookImages(internalWorkbook);
     const externalTeacherImages = extractWorkbookImages(externalWorkbook);
 
+    // 将 URL 类型的图片字段异步下载填充（DISPIMG 类型已由 extractWorkbookImages 处理完毕）
+
     const students = parseRows(studentWorkbook, {
       preferredAliases: [
         FIELD_ALIASES.studentName,
@@ -72,6 +74,13 @@
     })
       .map((row) => normalizeTeacher(row, "external", externalTeacherImages))
       .filter((row) => row.name);
+
+    // 并行下载所有 URL 类型图片
+    await Promise.all([
+      ...students.map((s) => resolveUrlImages(s, ["studentPhoto"])),
+      ...internalTeachers.map((t) => resolveUrlImages(t, ["photo", "certificate"])),
+      ...externalTeachers.map((t) => resolveUrlImages(t, ["photo", "certificate"])),
+    ]);
 
     return {
       students,
@@ -289,40 +298,40 @@
     return mimeTypes[extension] || "application/octet-stream";
   }
 
-function normalizeCityForProvince(province, city) {
-  if (!province) return city;
-  // 直辖市时，city 字段统一返回不带"市"后缀的省名（与页面选项保持一致）
-  console.log('第一次格式化 市', DIRECT_CITIES.has(province) ? province.replace(/市$/, "") : city);
-  return DIRECT_CITIES.has(province) ? province.replace(/市$/, "") : city;
-}
-function getGradeNumber(grade) {
-  const text = String(grade || "").trim().replace(/\s+/g, "");
+  function normalizeCityForProvince(province, city) {
+    if (!province) return city;
+    // 直辖市时，city 字段统一返回不带"市"后缀的省名（与页面选项保持一致）
+    console.log('第一次格式化 市', DIRECT_CITIES.has(province) ? province.replace(/市$/, "") : city);
+    return DIRECT_CITIES.has(province) ? province.replace(/市$/, "") : city;
+  }
+  function getGradeNumber(grade) {
+    const text = String(grade || "").trim().replace(/\s+/g, "");
 
-  // 1. 优先匹配初高中年级（必须在纯数字和中文数字之前判断）
-  const middleHighMap = [
-    { keywords: ["高一", "高中一", "高中1"], number: 10 },
-    { keywords: ["高二", "高中二", "高中2"], number: 11 },
-    { keywords: ["高三", "高中三", "高中3"], number: 12 },
-    { keywords: ["初一", "初中一", "初中1"], number: 7 },
-    { keywords: ["初二", "初中二", "初中2"], number: 8 },
-    { keywords: ["初三", "初中三", "初中3"], number: 9 },
-  ];
-  const matched = middleHighMap.find(({ keywords }) =>
-    keywords.some((kw) => text.includes(kw))
-  );
-  if (matched) return matched.number;
+    // 1. 优先匹配初高中年级（必须在纯数字和中文数字之前判断）
+    const middleHighMap = [
+      { keywords: ["高一", "高中一", "高中1"], number: 10 },
+      { keywords: ["高二", "高中二", "高中2"], number: 11 },
+      { keywords: ["高三", "高中三", "高中3"], number: 12 },
+      { keywords: ["初一", "初中一", "初中1"], number: 7 },
+      { keywords: ["初二", "初中二", "初中2"], number: 8 },
+      { keywords: ["初三", "初中三", "初中3"], number: 9 },
+    ];
+    const matched = middleHighMap.find(({ keywords }) =>
+      keywords.some((kw) => text.includes(kw))
+    );
+    if (matched) return matched.number;
 
-  // 2. 纯阿拉伯数字
-  const digit = text.match(/\d+/);
-  if (digit) return Number.parseInt(digit[0], 10);
+    // 2. 纯阿拉伯数字
+    const digit = text.match(/\d+/);
+    if (digit) return Number.parseInt(digit[0], 10);
 
-  // 3. 中文数字（小学场景，此时已排除初高中干扰）
-  const chineseDigits = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
-  if (text.includes("十一")) return 11;
-  if (text.includes("十二")) return 12;
-  const match = text.match(/[一二三四五六七八九十]/);
-  return match ? chineseDigits[match[0]] : null;
-}
+    // 3. 中文数字（小学场景，此时已排除初高中干扰）
+    const chineseDigits = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+    if (text.includes("十一")) return 11;
+    if (text.includes("十二")) return 12;
+    const match = text.match(/[一二三四五六七八九十]/);
+    return match ? chineseDigits[match[0]] : null;
+  }
 
   function getGroupNameByGrade(grade) {
     const number = getGradeNumber(grade);
@@ -333,19 +342,135 @@ function getGradeNumber(grade) {
     return "";
   }
 
+  function isHttpUrl(text) {
+    return /^https?:\/\//i.test(text);
+  }
+
   function normalizeImageCell(value, images) {
     const text = cleanCell(value);
+
+    // —— URL 模式：单元格内容是 http/https 链接 ——
+    if (isHttpUrl(text)) {
+      return {
+        value: text,
+        imageId: "",
+        isUrl: true,
+        url: text,
+        hasImageReference: true,  // 有引用，等待异步填充
+        hasImageFile: false,       // 异步填充前标记为 false
+        fileName: "",
+        mimeType: "",
+        bytes: null,
+      };
+    }
+
+    // —— DISPIMG 模式：嵌入式图片 ——
     const imageId = text.match(/DISPIMG\("([^"]+)"/i)?.[1] || "";
     const image = imageId ? images.get(imageId) : null;
     return {
       value: text,
       imageId,
+      isUrl: false,
+      url: "",
       hasImageReference: Boolean(imageId),
       hasImageFile: Boolean(image),
       fileName: image?.fileName || "",
       mimeType: image?.mimeType || "",
       bytes: image?.bytes || null,
     };
+  }
+
+  /**
+   * 通过 fetch 下载 URL 图片并回填到 imageCell 对象。
+   * 支持带签名参数的 OSS 链接（如阿里云 OSS）。
+   * 对于跨域受限场景，回退至 XMLHttpRequest（blob 模式）。
+   */
+  async function fetchUrlImage(imageCell) {
+    const { url } = imageCell;
+    try {
+      // 优先使用 fetch（支持 credentials: omit 避免不必要的预检）
+      const response = await fetch(url, {
+        method: "GET",
+        credentials: "omit",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const buffer = await response.arrayBuffer();
+      const contentType = response.headers.get("content-type") || "";
+      const mimeType = contentType.split(";")[0].trim() || inferMimeTypeFromUrl(url);
+      const fileName = inferFileNameFromUrl(url);
+      imageCell.bytes = new Uint8Array(buffer);
+      imageCell.mimeType = mimeType;
+      imageCell.fileName = fileName;
+      imageCell.hasImageFile = true;
+    } catch (fetchErr) {
+      console.warn(`[excel-data] fetch 下载图片失败，尝试 XHR：${url}`, fetchErr);
+      // 回退：XMLHttpRequest blob
+      try {
+        const bytes = await fetchViaXhr(url);
+        imageCell.bytes = bytes;
+        imageCell.mimeType = inferMimeTypeFromUrl(url);
+        imageCell.fileName = inferFileNameFromUrl(url);
+        imageCell.hasImageFile = true;
+      } catch (xhrErr) {
+        console.error(`[excel-data] XHR 下载图片也失败：${url}`, xhrErr);
+        // 保持 hasImageFile = false，让调用方感知
+      }
+    }
+  }
+
+  function fetchViaXhr(url) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", url, true);
+      xhr.responseType = "arraybuffer";
+      xhr.timeout = 30000;
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(new Uint8Array(xhr.response));
+        } else {
+          reject(new Error(`XHR HTTP ${xhr.status}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error("XHR 网络错误"));
+      xhr.ontimeout = () => reject(new Error("XHR 超时"));
+      xhr.send();
+    });
+  }
+
+  function inferMimeTypeFromUrl(url) {
+    const clean = url.split("?")[0];
+    const ext = clean.split(".").pop().toLowerCase();
+    return getMimeType(ext + "." + ext);  // getMimeType 接收文件名，凑一下格式
+  }
+
+  function inferFileNameFromUrl(url) {
+    try {
+      // 优先从 response-content-disposition 参数中取文件名
+      const params = new URLSearchParams(url.split("?")[1] || "");
+      const disposition = params.get("response-content-disposition") || "";
+      const fnMatch = disposition.match(/filename=([^;\s]+)/);
+      if (fnMatch) return decodeURIComponent(fnMatch[1]);
+    } catch (_) { /* ignore */ }
+    // 回退：取 URL 路径最后一段
+    return url.split("?")[0].split("/").pop() || "image";
+  }
+
+  /**
+   * 对一条记录中指定的图片字段进行异步 URL 下载（就地修改）。
+   */
+  async function resolveUrlImages(record, fields) {
+    await Promise.all(
+      fields.map((field) => {
+        const cell = record[field];
+        if (cell && cell.isUrl && !cell.hasImageFile) {
+          return fetchUrlImage(cell);
+        }
+        return Promise.resolve();
+      })
+    );
   }
 
   function cleanCell(value) {
